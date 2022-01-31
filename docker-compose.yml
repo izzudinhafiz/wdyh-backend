@@ -1,0 +1,11 @@
+version: "3.7"
+services:
+  wdyh-db:
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - '5438:5432'
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
