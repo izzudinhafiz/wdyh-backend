@@ -1,10 +1,11 @@
-from sqlmodel import Field, SQLModel, Relationship
+from sqlmodel import Field, SQLModel, Relationship, Session, select
 from datetime import date
 from sqlalchemy import Column, Date
 from sqlalchemy.dialects import postgresql as psql
 from typing import TYPE_CHECKING, Any, Dict, List
 from .link_model import UserTransactionLink
 from .types import Money
+from ..errors import TransactionDoesNotExistError
 
 
 if TYPE_CHECKING:
@@ -28,3 +29,10 @@ class Transaction(SQLModel, table=True):
     payer: "User" = Relationship(back_populates="as_payer")
     payees: List["User"] = Relationship(back_populates="as_payee", link_model=UserTransactionLink, sa_relationship_kwargs={"viewonly": True})
     transaction_link: List["UserTransactionLink"] = Relationship(back_populates="transaction",  sa_relationship_kwargs={"overlaps": "as_payee,payees"})
+
+    @classmethod
+    def get_by_id(cls, transaction_id: int, session: Session):
+        transaction = session.exec(select(Transaction).where(Transaction.id == transaction_id)).first()
+        if not transaction:
+            raise TransactionDoesNotExistError(f"Transaction with id: {transaction_id} does not exist")
+        return transaction

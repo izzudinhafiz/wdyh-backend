@@ -8,3 +8,6 @@ class GroupDoesNotExistError(Exception):
 
 class TransactionDoesNotExistError(Exception):
     pass
+
+class UserTransactionLinkDoesNotExistError(Exception):
+    pass
