@@ -1,26 +1,21 @@
-from decimal import Decimal
-from fastapi import FastAPI, Depends, HTTPException, status, Security, Form, Response
+from fastapi import FastAPI, Depends, status, Security, Form, Response
 from fastapi.security import  OAuth2PasswordRequestForm
-from pydantic import BaseModel
+from api.model.response import *
+from api.model.request import *
+from database import Transaction, Group, Journal, User
+from database.models.types import SessionData
 import api.authentication as auth
 import api.transactions as trx
-from datetime import date
-from database import Transaction
 
 app = FastAPI()
 
-@app.post("/token", response_model=auth.Token)
+@app.post("/token", response_model=auth.Token, tags=["authentication"])
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = auth.authenticate_user(form_data.username, form_data.password)
+    token_data = auth.TokenData(username=user.username)
+    return auth.Token(access_token=token_data.to_jwt())
 
-    if not user:
-        raise HTTPException(status_code=401, detail="Incorrect Username or Password")
-
-    access_token = auth.create_access_token(data = {"sub": user.username})
-
-    return auth.Token(access_token=access_token, token_type="jwt")
-
-@app.post("/signup")
+@app.post("/signup", tags=["authentication"])
 async def signup(
     name: str = Form(...),
     username: str = Form(...),
@@ -31,52 +26,53 @@ async def signup(
 
     return Response(status_code=status.HTTP_201_CREATED)
 
-class TransactionPost(BaseModel):
-    title: str
-    amount: Decimal
-    transaction_date: date
-    payer_id: int
-    group_id: int
-    breakdown: dict[int, Decimal]
 
-class TransactionPatch(BaseModel):
-    transaction_id: int
-    title: str | None = None
-    amount: Decimal | None = None
-    transaction_date: date | None = None
-    payer_id: int | None = None
-    group_id: int | None = None
-    breakdown: dict[int, Decimal] | None = None
 
-@app.post("/transaction")
-async def post_transaction(transaction: TransactionPost):
-    trx.create_transaction(
-        transaction.title,
-        transaction.amount,
-        transaction.transaction_date,
-        transaction.payer_id,
-        transaction.group_id,
-        transaction.breakdown
-        )
+@app.post("/transaction", tags=["transaction"], response_model=IDResponse)
+async def create_transaction(transaction: TransactionPost, session: SessionData = Security(auth.session_data)):
+    transaction_id = Transaction.create_transaction(transaction, session)
+    return Response(IDResponse(id=transaction_id),status_code=status.HTTP_201_CREATED)
 
-    return Response(status_code=status.HTTP_201_CREATED)
+@app.get("/transaction", response_model=Transaction, tags=["transaction"])
+async def get_transaction(transaction_id: int, session: SessionData = Security(auth.session_data)):
+    return Transaction.get_by_id(transaction_id, session)
 
-@app.patch("/transaction")
-async def patch_transaction(transaction: TransactionPatch):
-    trx.update_transaction(
-        transaction.transaction_id,
-        title = transaction.title,
-        amount = transaction.amount,
-        transaction_date = transaction.transaction_date,
-        payer_id = transaction.payer_id,
-        group_id = transaction.group_id,
-        breakdown = transaction.breakdown
-    )
+@app.get("/transaction/group_transactions", response_model=list[Transaction], tags=["transaction"])
+async def get_group_transactions(group_id: int, session: SessionData = Security(auth.session_data)):
+    return Transaction.get_group_transactions(group_id, session)
 
-    return Response(status_code=status.HTTP_202_ACCEPTED)
+@app.get("/transaction/group_sessions", response_model=list[Transaction], tags=["transaction"])
+async def get_group_sessions(group_id: int, session: SessionData = Security(auth.session_data)):
+    return Transaction.get_group_sessions(group_id, session)
 
-@app.get("/transaction", response_model=Transaction)
-async def get_transaction(transaction_id: int):
-    transaction =  trx.get_transaction(transaction_id)
 
-    return transaction
+@app.post("/group/create", tags=["group"], response_model=IDResponse)
+async def create_group(data: GroupPost, session: SessionData = Security(auth.session_data)):
+    group_id = Group.create_group(data, session)
+    return Response(IDResponse(id=group_id), status_code=status.HTTP_201_CREATED)
+
+@app.post("/group/{group_id}/adduser", tags=["group"])
+async def add_user_to_group(group_id: int, session: SessionData = Security(auth.session_data)):
+    group = Group.get_by_id(group_id, session)
+    session.user.groups.append(group)
+    session.conn.commit()
+    return Response(status_code=status.HTTP_200_OK)
+
+
+
+
+@app.get("/group/{group_id}/users", response_model=list[User], tags=["group"])
+async def get_users(group_id: int, session: SessionData = Security(auth.session_data)):
+    return Group.get_users(group_id, session)
+
+
+@app.get("/user/overview", response_model=Overview, tags=["user"])
+async def get_user_overview(session: SessionData = Security(auth.session_data)):
+    balance = Journal.get_user_balance(session)
+    num_sessions = len(Transaction.get_active_session(session))
+
+    return Overview(balance=balance, sessions=num_sessions)
+
+@app.get("/user/active_sessions", response_model=list[Transaction], tags=["user"])
+async def get_user_active_sessions(session: SessionData = Security(auth.session_data)):
+    return Transaction.get_active_session(session)
