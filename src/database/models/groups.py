@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, List
 from .link_model import UserGroupLink
 from ..errors import GroupDoesNotExistError
 from .types import SessionData
+from api.model.response import UserResponse
 
 
 if TYPE_CHECKING:
@@ -47,4 +48,7 @@ class Group(SQLModel, table=True):
     @classmethod
     def get_users(cls, group_id: int, session: SessionData):
         group = cls.get_by_id(group_id, session)
-        return group.users
+        users: list[UserResponse] = []
+        for user in group.users:
+            users.append(UserResponse(id=user.id, name=user.name, push_on=user.push_on, email_on=user.email_on)) # type: ignore
+        return users

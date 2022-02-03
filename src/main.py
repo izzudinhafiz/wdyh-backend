@@ -2,10 +2,9 @@ from fastapi import FastAPI, Depends, status, Security, Form, Response
 from fastapi.security import  OAuth2PasswordRequestForm
 from api.model.response import *
 from api.model.request import *
-from database import Transaction, Group, Journal, User
+from database import Transaction, Group, Journal
 from database.models.types import SessionData
 import api.authentication as auth
-import api.transactions as trx
 
 app = FastAPI()
 
@@ -31,7 +30,7 @@ async def signup(
 @app.post("/transaction", tags=["transaction"], response_model=IDResponse)
 async def create_transaction(transaction: TransactionPost, session: SessionData = Security(auth.session_data)):
     transaction_id = Transaction.create_transaction(transaction, session)
-    return Response(IDResponse(id=transaction_id),status_code=status.HTTP_201_CREATED)
+    return IDResponse(id=transaction_id)
 
 @app.get("/transaction", response_model=Transaction, tags=["transaction"])
 async def get_transaction(transaction_id: int, session: SessionData = Security(auth.session_data)):
@@ -45,11 +44,17 @@ async def get_group_transactions(group_id: int, session: SessionData = Security(
 async def get_group_sessions(group_id: int, session: SessionData = Security(auth.session_data)):
     return Transaction.get_group_sessions(group_id, session)
 
+@app.get("/transaction/simplify_debt", response_model=list[PayStructResponse], tags=["transaction"])
+async def simplify_debts(session: SessionData = Security(auth.session_data)):
+    transactions = Transaction.get_closed_transactions(1, session)
+    return Journal.get_users_debt([x.id for x in transactions], session) # type: ignore
+
+
 
 @app.post("/group/create", tags=["group"], response_model=IDResponse)
 async def create_group(data: GroupPost, session: SessionData = Security(auth.session_data)):
     group_id = Group.create_group(data, session)
-    return Response(IDResponse(id=group_id), status_code=status.HTTP_201_CREATED)
+    return IDResponse(id=group_id)
 
 @app.post("/group/{group_id}/adduser", tags=["group"])
 async def add_user_to_group(group_id: int, session: SessionData = Security(auth.session_data)):
@@ -58,12 +63,11 @@ async def add_user_to_group(group_id: int, session: SessionData = Security(auth.
     session.conn.commit()
     return Response(status_code=status.HTTP_200_OK)
 
-
-
-
-@app.get("/group/{group_id}/users", response_model=list[User], tags=["group"])
+@app.get("/group/{group_id}/users", response_model=list[UserResponse], tags=["group"])
 async def get_users(group_id: int, session: SessionData = Security(auth.session_data)):
     return Group.get_users(group_id, session)
+
+
 
 
 @app.get("/user/overview", response_model=Overview, tags=["user"])

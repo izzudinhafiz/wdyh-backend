@@ -1,4 +1,4 @@
-from sqlmodel import Field, SQLModel, Relationship, Session, select
+from sqlmodel import Field, SQLModel, Relationship, select, or_
 from datetime import date
 from sqlalchemy import Column, Date, DateTime
 from sqlalchemy.dialects import postgresql as psql
@@ -46,6 +46,12 @@ class Transaction(TransactionBase, table=True):
     @classmethod
     def get_group_transactions(cls, group_id: int, session: SessionData):
         return session.conn.exec(select(Transaction).where(Transaction.group_id == group_id)).all()
+
+    @classmethod
+    def get_closed_transactions(cls, group_id: int, session: SessionData):
+        transactions = session.conn.exec(select(Transaction).where(Transaction.group_id==group_id, Transaction.is_session==False)).all()
+        transactions = transactions + session.conn.exec(select(Transaction).where(Transaction.group_id==group_id, Transaction.is_session==True, Transaction.is_session_closed==True)).all()
+        return transactions
 
     @classmethod
     def get_active_session(cls, session: "SessionData"):
